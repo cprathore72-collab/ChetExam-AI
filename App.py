@@ -2229,10 +2229,9 @@ def review_html(
         if row["your"]:
 
             your = (
-                f"<b>{row['your']}</b>"
-                " — "
-                f"{esc(q['options'].get("
-                f"row['your'], ''))}"
+    f"<b>{row['your']}</b>"
+    " — "
+    f"{esc(q['options'].get(row['your'], ''))}"
             )
 
         else:
@@ -2243,11 +2242,10 @@ def review_html(
             )
 
         correct = (
-            f"<b>{q['correct']}</b>"
-            " — "
-            f"{esc(q['options'].get("
-            f"q['correct'], ''))}"
-        )
+    f"<b>{q['correct']}</b>"
+    " — "
+    f"{esc(q['options'].get(q['correct'], ''))}"
+)
 
         marked = (
             " <span class='ce-badge "
