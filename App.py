@@ -3298,11 +3298,18 @@ def timer_tick(
     ):
 
         return (
+            timer_html(state) if state else "",
+            state,
             upd(),
-            *[
-                upd()
-                for _ in range(8)
-            ]
+            upd(),
+            upd(),
+            upd(),
+            upd(),
+            upd(),
+            upd(),
+            upd(
+                active=False
+            )
         )
 
     remaining = (
@@ -3314,10 +3321,17 @@ def timer_tick(
 
         return (
             timer_html(state),
-            *[
-                upd()
-                for _ in range(8)
-            ]
+            state,
+            upd(),
+            upd(),
+            upd(),
+            upd(),
+            upd(),
+            upd(),
+            upd(),
+            upd(
+                active=True
+            )
         )
 
     save_answer(
@@ -3337,9 +3351,8 @@ def timer_tick(
 
     return (
         timer_html(state),
-        *finished[1:]
+        *finished
     )
-
 
 def new_test():
 
