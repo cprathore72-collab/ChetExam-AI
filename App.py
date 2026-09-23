@@ -9,6 +9,8 @@ import html
 import time
 import random
 import unicodedata
+import json
+from urllib.request import Request, urlopen
 from collections import Counter
 
 import numpy as np
@@ -67,6 +69,17 @@ TOPIC_ALIASES = {}
 EXCLUDE_CHECK_KEYWORDS = []
 
 SHOW_TOPICS_IN_DIAGNOSTICS = True
+
+# Student registration API
+# The endpoint is public, but the API secret is kept here so no
+# separate Raven environment-variable setup is required.
+STUDENT_API_URL = (
+    "https://script.google.com/macros/s/"
+    "AKfycbxBWWufizRwwFlcTxkbPabv7c4hvq2ocLNlfMePhAeZH7FxvgKzAD-VlwNfwlHzRnK/"
+    "exec"
+)
+
+STUDENT_API_SECRET = "ChetExam_Student_2026_X9p7K2"
 
 
 # ================================================================
@@ -3446,7 +3459,105 @@ def retest(
 
 
 # ================================================================
-# 18. BUILD APP
+# 18. STUDENT REGISTRATION
+# ================================================================
+
+def register_student(
+    name,
+    mobile,
+    consent
+):
+
+    name = clean(name)
+    mobile = re.sub(
+        r"\D",
+        "",
+        clean(mobile)
+    )
+
+    if len(name) < 2:
+        return (
+            None,
+            upd(visible=True),
+            upd(visible=False),
+            "<div class='ce-warn'>Please apna valid naam enter karo.</div>"
+        )
+
+    if not re.fullmatch(
+        r"[6-9]\d{9}",
+        mobile
+    ):
+        return (
+            None,
+            upd(visible=True),
+            upd(visible=False),
+            "<div class='ce-warn'>Please 10-digit valid Indian mobile number enter karo.</div>"
+        )
+
+    payload = {
+        "name": name,
+        "mobile": mobile,
+        "consent": bool(consent),
+        "source": "ChetExam AI",
+        "secret": STUDENT_API_SECRET,
+    }
+
+    try:
+        request = Request(
+            STUDENT_API_URL,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json"
+            },
+            method="POST"
+        )
+
+        with urlopen(
+            request,
+            timeout=15
+        ) as response:
+            raw = response.read().decode(
+                "utf-8"
+            )
+            data = json.loads(raw)
+
+        if not data.get("ok"):
+            return (
+                None,
+                upd(visible=True),
+                upd(visible=False),
+                "<div class='ce-warn'>Registration save nahi ho paaya. Please dobara try karo.</div>"
+            )
+
+    except Exception as e:
+        print(
+            "Student registration error:",
+            type(e).__name__,
+            str(e)
+        )
+        return (
+            None,
+            upd(visible=True),
+            upd(visible=False),
+            "<div class='ce-warn'>Registration save nahi ho paaya. Please thodi der baad try karo.</div>"
+        )
+
+    student = {
+        "name": name,
+        "mobile": mobile,
+        "consent": bool(consent),
+    }
+
+    return (
+        student,
+        upd(visible=False),
+        upd(visible=True),
+        f"<div class='ce-ok-msg'>Welcome <b>{esc(name)}</b> 👋<br>Ab test start kar sakte ho.</div>"
+    )
+
+
+# ================================================================
+# 19. BUILD APP
 # ================================================================
 
 def build_app():
@@ -3469,12 +3580,62 @@ def build_app():
             value=HEADER_HTML
         )
 
+        student_state = gr.State(
+            value=None
+        )
+
+        with gr.Column(
+            visible=True
+        ) as login_col:
+
+            gr.Markdown(
+                """
+                ## 👋 Welcome to ChetExam AI
+
+                **Test start karne se pehle basic details enter karein.**
+                """
+            )
+
+            student_name = gr.Textbox(
+                label="👤 Name",
+                placeholder="Apna naam enter karein",
+                max_lines=1,
+                interactive=True
+            )
+
+            student_mobile = gr.Textbox(
+                label="📱 Mobile Number",
+                placeholder="10-digit mobile number",
+                max_lines=1,
+                type="tel",
+                interactive=True
+            )
+
+            student_consent = gr.Checkbox(
+                label=(
+                    "Future ChetExam / AI Exam Mentor "
+                    "updates ke liye contact kiya ja sakta hai."
+                ),
+                value=False,
+                interactive=True
+            )
+
+            login_button = gr.Button(
+                "➡️ CONTINUE TO TEST",
+                variant="primary",
+                size="lg"
+            )
+
+            login_message = gr.HTML(
+                value=""
+            )
+
         # --------------------------------------------------------
         # SETUP
         # --------------------------------------------------------
 
         with gr.Column(
-            visible=True
+            visible=False
         ) as setup_col:
 
             exam_dd = gr.Dropdown(
@@ -3740,6 +3901,25 @@ def build_app():
             retest_message,
             timer,
         ]
+
+        # --------------------------------------------------------
+        # STUDENT LOGIN / REGISTRATION
+        # --------------------------------------------------------
+
+        login_button.click(
+            fn=register_student,
+            inputs=[
+                student_name,
+                student_mobile,
+                student_consent,
+            ],
+            outputs=[
+                student_state,
+                login_col,
+                setup_col,
+                login_message,
+            ]
+        )
 
         # --------------------------------------------------------
         # SELECTOR EVENTS
