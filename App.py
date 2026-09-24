@@ -20,7 +20,7 @@ import gradio as gr
 # 1. CONFIG
 # ================================================================
 
-SHEET_ID ="1Hw2cRzZs9ZvCPDrpC2ehi83PHgmeTAgKlNGMs8hHZVw"
+SHEET_ID ="1Hw2cRzZs9ZvCPdrpC2ehi83PHgmeTAgKlNGMs8hHZVw"
 SHEET_TAB = "MCQ_DATABASE"
 
 MAX_Q = 100
@@ -89,6 +89,12 @@ STUDENT_WEBAPP_URL = (
 )
 
 REGISTRATION_SOURCE = "ChetExam AI"
+
+# One-time WhatsApp share gate.
+# The browser counts three WhatsApp share launches before registration
+# is allowed. WhatsApp does not expose delivery/recipient confirmation
+# to a third-party website, so this is a share-action gate, not delivery verification.
+REQUIRED_WHATSAPP_SHARES = 3
 
 # Optional: if the Apps Script Web App uses a secret,
 # set STUDENT_API_SECRET in the hosting environment.
@@ -3014,7 +3020,8 @@ def on_register(
 ):
     """
     Validates Name + Mobile, best-effort writes to the STUDENTS
-    sheet, then reveals the existing Exam Setup screen.
+    sheet, then reveals the existing Exam Setup screen. The browser
+    enforces the one-time three-share gate before this handler is exposed.
     Outputs: (register_col, setup_col, reg_message, welcome_box)
     """
 
@@ -3716,13 +3723,15 @@ def build_app():
             reg_name = gr.Textbox(
                 label="👤 Name",
                 placeholder="Apna naam likhein",
-                interactive=True
+                interactive=True,
+                elem_id="ce-reg-name"
             )
 
             reg_mobile = gr.Textbox(
                 label="📱 Mobile Number",
                 placeholder="10 digit mobile number",
-                interactive=True
+                interactive=True,
+                elem_id="ce-reg-mobile"
             )
 
             reg_consent = gr.Checkbox(
@@ -3734,10 +3743,61 @@ def build_app():
                 interactive=True
             )
 
+            share_gate = gr.HTML(
+                value=f"""
+                <div id="ce-share-gate" style="margin-top:14px;padding:16px;border:1px solid #d9d9e3;border-radius:14px;background:#fafafa;">
+                  <div style="font-size:18px;font-weight:700;margin-bottom:6px;">📲 Pehle 3 WhatsApp Shares</div>
+                  <div style="font-size:14px;line-height:1.5;margin-bottom:12px;">
+                    Test access unlock karne ke liye is ChetExam link ko WhatsApp par <b>3 baar share</b> karein.
+                    Share complete kiye bina Continue button unlock nahi hoga.
+                  </div>
+                  <button type="button" id="ce-wa-share" style="width:100%;padding:13px 16px;border:0;border-radius:10px;cursor:pointer;font-weight:700;font-size:16px;">
+                    🟢 Share on WhatsApp
+                  </button>
+                  <div id="ce-share-count" style="margin-top:10px;font-weight:700;text-align:center;">Shares completed: 0 / {REQUIRED_WHATSAPP_SHARES}</div>
+                  <div style="font-size:12px;color:#666;text-align:center;margin-top:6px;">WhatsApp ko message send karne ke liye share screen par Send dabana hoga.</div>
+                </div>
+                <script>
+                (() => {{
+                  const KEY = 'chetexam_whatsapp_share_count_v1';
+                  const REQUIRED = {REQUIRED_WHATSAPP_SHARES};
+                  const getCount = () => Math.min(REQUIRED, parseInt(localStorage.getItem(KEY) || '0', 10) || 0);
+                  const setCount = (n) => localStorage.setItem(KEY, String(Math.min(REQUIRED, n)));
+                  const render = () => {{
+                    const c = getCount();
+                    const el = document.getElementById('ce-share-count');
+                    const btn = document.getElementById('ce-wa-share');
+                    if (el) el.textContent = `Shares completed: ${{c}} / ${{REQUIRED}}`;
+                    if (btn) btn.textContent = c >= REQUIRED ? '✅ 3 Shares Complete' : `🟢 Share on WhatsApp (${{c}}/${{REQUIRED}})`;
+                    const cont = document.querySelector('#ce-register-button button');
+                    if (cont) cont.disabled = c < REQUIRED;
+                  }};
+                  const share = () => {{
+                    const c = getCount();
+                    if (c >= REQUIRED) {{ render(); return; }}
+                    const url = window.location.href.split('#')[0];
+                    const text = 'ChetExam AI par free exam test dein 👇\n' + url;
+                    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+                    // WhatsApp does not expose delivery/send confirmation to websites.
+                    // Count the share action after opening the WhatsApp share screen.
+                    setCount(c + 1);
+                    render();
+                  }};
+                  document.addEventListener('click', (e) => {{
+                    if (e.target && e.target.closest('#ce-wa-share')) share();
+                  }});
+                  render();
+                }})();
+                </script>
+                """
+            )
+
             reg_button = gr.Button(
                 "➡️ CONTINUE TO TEST",
                 variant="primary",
-                size="lg"
+                size="lg",
+                interactive=False,
+                elem_id="ce-register-button"
             )
 
             reg_message = gr.HTML(
@@ -4023,6 +4083,47 @@ def build_app():
         ]
 
         # --------------------------------------------------------
+        # ONE-TIME BROWSER ACCESS RESTORE
+        # --------------------------------------------------------
+        # After a successful first registration, keep the student's name/mobile
+        # locally so the same browser can return directly to Exam Setup.
+        def restore_saved_student():
+            return None
+
+        demo.load(
+            fn=restore_saved_student,
+            inputs=[],
+            outputs=[],
+            js="""
+            () => {
+              try {
+                const done = localStorage.getItem('chetexam_registered_v1');
+                const name = localStorage.getItem('chetexam_name_v1') || '';
+                const mobile = localStorage.getItem('chetexam_mobile_v1') || '';
+                if (done === '1' && name && mobile) {
+                  const setVal = (id, value) => {
+                    const root = document.getElementById(id);
+                    const input = root && root.querySelector('input, textarea');
+                    if (!input) return;
+                    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+                    if (setter) setter.call(input, value); else input.value = value;
+                    input.dispatchEvent(new Event('input', {bubbles:true}));
+                    input.dispatchEvent(new Event('change', {bubbles:true}));
+                  };
+                  setTimeout(() => {
+                    setVal('ce-reg-name', name);
+                    setVal('ce-reg-mobile', mobile);
+                    const b = document.querySelector('#ce-register-button button');
+                    if (b) { b.disabled = false; b.click(); }
+                  }, 700);
+                }
+              } catch (e) {}
+              return [];
+            }
+            """
+        )
+
+        # --------------------------------------------------------
         # REGISTRATION
         # --------------------------------------------------------
 
@@ -4033,7 +4134,7 @@ def build_app():
             welcome_box,
         ]
 
-        reg_button.click(
+        reg_event = reg_button.click(
             fn=on_register,
             inputs=[
                 reg_name,
@@ -4041,6 +4142,28 @@ def build_app():
                 reg_consent,
             ],
             outputs=registration_outputs
+        )
+
+        reg_event.then(
+            fn=None,
+            inputs=[reg_name, reg_mobile],
+            outputs=[],
+            js="""
+            (name, mobile) => {
+              try {
+                const setupVisible = Array.from(document.querySelectorAll('body *')).some(el => {
+                  const t = (el.textContent || '').trim();
+                  return t.includes('Ab test start kar sakte ho.') && el.offsetParent !== null;
+                });
+                if (setupVisible) {
+                  localStorage.setItem('chetexam_registered_v1', '1');
+                  localStorage.setItem('chetexam_name_v1', name || '');
+                  localStorage.setItem('chetexam_mobile_v1', mobile || '');
+                }
+              } catch (e) {}
+              return [];
+            }
+            """
         )
 
         reg_mobile.submit(
