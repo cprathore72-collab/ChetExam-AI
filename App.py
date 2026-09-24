@@ -4395,40 +4395,402 @@ def build_app():
 
                         if (
                             pending === '1' &&
-                            current < 3 &&
-                            started > 0 &&
-                            (Date.now() - started) >= 1500
+
+
+                 # --------------------------------------------------------
+        # WHATSAPP SHARE GATE - FINAL V3
+        # --------------------------------------------------------
+
+        WHATSAPP_SHARE_KEY = (
+            "chetexam_whatsapp_share_count_v2"
+        )
+
+        WHATSAPP_PENDING_KEY = (
+            "chetexam_wa_share_pending_v3"
+        )
+
+        WHATSAPP_STARTED_KEY = (
+            "chetexam_wa_share_started_v3"
+        )
+
+        WHATSAPP_INFLIGHT_KEY = (
+            "chetexam_wa_share_inflight_v3"
+        )
+
+
+        def count_whatsapp_share(current_count):
+
+            try:
+                current = int(
+                    current_count or 0
+                )
+            except Exception:
+                current = 0
+
+            current = max(
+                0,
+                min(
+                    REQUIRED_WHATSAPP_SHARES,
+                    current
+                )
+            )
+
+            new_count = min(
+                REQUIRED_WHATSAPP_SHARES,
+                current + 1
+            )
+
+            return (
+                new_count,
+
+                (
+                    f"**Shares completed: "
+                    f"{new_count} / "
+                    f"{REQUIRED_WHATSAPP_SHARES}**\n\n"
+                    +
+                    (
+                        "✅ Ab **Continue to Test** "
+                        "dabakar test start karein."
+                        if new_count >= REQUIRED_WHATSAPP_SHARES
+                        else
+                        "📱 WhatsApp me **Send** dabakar "
+                        "ChetExam par wapas aayein."
+                    )
+                ),
+
+                upd(
+                    interactive=(
+                        new_count >=
+                        REQUIRED_WHATSAPP_SHARES
+                    )
+                ),
+
+                upd(
+                    value=(
+                        "✅ 3 Shares Complete"
+                        if new_count >=
+                        REQUIRED_WHATSAPP_SHARES
+                        else
+                        (
+                            "🟢 Share on WhatsApp "
+                            f"({new_count}/"
+                            f"{REQUIRED_WHATSAPP_SHARES})"
+                        )
+                    )
+                )
+            )
+
+
+        # --------------------------------------------------------
+        # HIDDEN RETURN SYNC BUTTON
+        # --------------------------------------------------------
+
+        share_return_sync = gr.Button(
+            "sync",
+            visible=False,
+            elem_id="ce-wa-return-sync"
+        )
+
+
+        # --------------------------------------------------------
+        # SHARE BUTTON
+        #
+        # IMPORTANT:
+        # Clicking this button DOES NOT increase count.
+        # It only opens WhatsApp.
+        # --------------------------------------------------------
+
+        share_button.click(
+            fn=None,
+            inputs=[],
+            outputs=[],
+            js="""
+            () => {
+
+                try {
+
+                    const count = Math.min(
+                        3,
+                        parseInt(
+                            localStorage.getItem(
+                                'chetexam_whatsapp_share_count_v2'
+                            ) || '0',
+                            10
+                        ) || 0
+                    );
+
+                    if (count >= 3) {
+                        return [];
+                    }
+
+                    sessionStorage.setItem(
+                        'chetexam_wa_share_pending_v3',
+                        '1'
+                    );
+
+                    sessionStorage.setItem(
+                        'chetexam_wa_share_started_v3',
+                        String(Date.now())
+                    );
+
+                    sessionStorage.removeItem(
+                        'chetexam_wa_share_inflight_v3'
+                    );
+
+                    const url =
+                        window.location.href
+                            .split('#')[0];
+
+                    const message =
+                        'ChetExam AI par free exam test dein 👇\\n'
+                        + url;
+
+                    window.open(
+                        'https://wa.me/?text='
+                        + encodeURIComponent(message),
+                        '_blank'
+                    );
+
+                } catch (e) {}
+
+                return [];
+            }
+            """
+        )
+
+
+        # --------------------------------------------------------
+        # RETURN FROM WHATSAPP
+        # SERVER SIDE COUNT
+        # --------------------------------------------------------
+
+        share_return_sync.click(
+            fn=count_whatsapp_share,
+            inputs=[
+                whatsapp_share_count
+            ],
+            outputs=[
+                whatsapp_share_count,
+                share_count_box,
+                reg_button,
+                share_button,
+            ]
+        )
+
+
+        # --------------------------------------------------------
+        # SAVE COUNT + RESET RETURN FLAGS
+        # --------------------------------------------------------
+
+        share_return_sync.click(
+            fn=None,
+            inputs=[
+                whatsapp_share_count
+            ],
+            outputs=[],
+            js="""
+            (count) => {
+
+                try {
+
+                    const safeCount = Math.min(
+                        3,
+                        Math.max(
+                            0,
+                            parseInt(
+                                count || 0,
+                                10
+                            ) || 0
+                        )
+                    );
+
+                    localStorage.setItem(
+                        'chetexam_whatsapp_share_count_v2',
+                        String(safeCount)
+                    );
+
+                    sessionStorage.removeItem(
+                        'chetexam_wa_share_pending_v3'
+                    );
+
+                    sessionStorage.removeItem(
+                        'chetexam_wa_share_started_v3'
+                    );
+
+                    sessionStorage.removeItem(
+                        'chetexam_wa_share_inflight_v3'
+                    );
+
+                } catch (e) {}
+
+                return [];
+            }
+            """
+        )
+
+
+        # --------------------------------------------------------
+        # MOBILE RETURN DETECTOR
+        #
+        # Uses:
+        # 1. visibilitychange
+        # 2. focus
+        # 3. polling fallback
+        # --------------------------------------------------------
+
+        gr.HTML(
+            value="""
+            <script>
+            (function () {
+
+                if (
+                    window.__ceWaReturnListenerV3
+                ) {
+                    return;
+                }
+
+                window.__ceWaReturnListenerV3 =
+                    true;
+
+
+                function trySync() {
+
+                    try {
+
+                        if (
+                            document.visibilityState !==
+                            'visible'
                         ) {
-
-                            const syncButton =
-                                document.querySelector(
-                                    '#ce-wa-return-sync button'
-                                );
-
-                            if (syncButton) {
-                                syncButton.click();
-                            }
+                            return;
                         }
 
+
+                        const pending =
+                            sessionStorage.getItem(
+                                'chetexam_wa_share_pending_v3'
+                            );
+
+                        if (
+                            pending !== '1'
+                        ) {
+                            return;
+                        }
+
+
+                        const started =
+                            parseInt(
+                                sessionStorage.getItem(
+                                    'chetexam_wa_share_started_v3'
+                                ) || '0',
+                                10
+                            ) || 0;
+
+
+                        const current =
+                            Math.min(
+                                3,
+                                parseInt(
+                                    localStorage.getItem(
+                                        'chetexam_whatsapp_share_count_v2'
+                                    ) || '0',
+                                    10
+                                ) || 0
+                            );
+
+
+                        if (
+                            current >= 3
+                        ) {
+                            return;
+                        }
+
+
+                        if (
+                            !started
+                        ) {
+                            return;
+                        }
+
+
+                        // Prevent duplicate triggers
+                        const inflight =
+                            sessionStorage.getItem(
+                                'chetexam_wa_share_inflight_v3'
+                            );
+
+                        if (
+                            inflight === '1'
+                        ) {
+                            return;
+                        }
+
+
+                        // Give WhatsApp enough time
+                        // before counting the return.
+                        if (
+                            Date.now() -
+                            started <
+                            1800
+                        ) {
+                            return;
+                        }
+
+
+                        const button =
+                            document.querySelector(
+                                '#ce-wa-return-sync button'
+                            );
+
+
+                        if (
+                            !button
+                        ) {
+                            return;
+                        }
+
+
+                        sessionStorage.setItem(
+                            'chetexam_wa_share_inflight_v3',
+                            '1'
+                        );
+
+
+                        button.click();
+
                     } catch (e) {}
+
                 }
 
 
-                // Mobile browser returning from WhatsApp
+                // Method 1:
+                // Mobile browser returns from WhatsApp
                 document.addEventListener(
                     'visibilitychange',
-                    checkWhatsAppReturn
+                    trySync
                 );
 
+
+                // Method 2:
+                // Browser window gets focus again
                 window.addEventListener(
                     'focus',
-                    checkWhatsAppReturn
+                    trySync
                 );
+
+
+                // Method 3:
+                // Polling fallback
+                window.setInterval(
+                    trySync,
+                    1200
+                );
+
 
             })();
             </script>
             """
         )
+  
 
         # --------------------------------------------------------
         # REGISTRATION
