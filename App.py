@@ -20,7 +20,7 @@ import gradio as gr
 # 1. CONFIG
 # ================================================================
 
-SHEET_ID ="1Hw2cRzZs9ZvCPdrpC2ehi83PHgmeTAgKlNGMs8hHZVw"
+SHEET_ID ="1Hw2cRzZs9ZvCPDrpC2ehi83PHgmeTAgKlNGMs8hHZVw"
 SHEET_TAB = "MCQ_DATABASE"
 
 MAX_Q = 100
