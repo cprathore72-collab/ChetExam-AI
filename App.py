@@ -4589,7 +4589,7 @@ def main():
         server_name="0.0.0.0",
         server_port=port,
         show_error=True,
-        share=False,
+        share=True,
     )
 
 
