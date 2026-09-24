@@ -3790,13 +3790,7 @@ def build_app():
                 interactive=True
             )
 
-            # BrowserState persists the share count on the same browser/device.
-            # The actual WhatsApp launch is done client-side from a real Gradio button
-            # so mobile browsers can open WhatsApp reliably.
-            whatsapp_share_count = gr.BrowserState(
-                0,
-                storage_key="chetexam_whatsapp_share_count_v1"
-            )
+            whatsapp_share_count = gr.State(0)
 
             share_gate = gr.HTML(
                 value=f"""
