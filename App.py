@@ -3092,7 +3092,7 @@ def on_register(
     register_student(
         clean_name,
         clean_mobile,
-        consent
+        false
     )
 
     welcome = (
@@ -4214,7 +4214,6 @@ def build_app():
             inputs=[
                 reg_name,
                 reg_mobile,
-                reg_consent,
                 whatsapp_share_count,
             ],
             outputs=registration_outputs
@@ -4247,7 +4246,6 @@ def build_app():
             inputs=[
                 reg_name,
                 reg_mobile,
-                reg_consent,
                 whatsapp_share_count,
             ],
             outputs=registration_outputs
