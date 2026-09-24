@@ -20,7 +20,7 @@ import gradio as gr
 # 1. CONFIG
 # ================================================================
 
-SHEET_ID ="1Hw2cRzZs9ZvCPDrpC2ehi83PHgmeTAgKlNGMs8hHZVw"
+SHEET_ID = "1Hw2cRzZs9ZvCPDrpC2ehi83PHgmeTAgKlNGMs8hHZVw"
 SHEET_TAB = "MCQ_DATABASE"
 
 MAX_Q = 100
@@ -3016,7 +3016,8 @@ def nochange_view():
 def on_register(
     name,
     mobile,
-    consent
+    consent,
+    share_count=0
 ):
     """
     Validates Name + Mobile, best-effort writes to the STUDENTS
@@ -3024,6 +3025,23 @@ def on_register(
     enforces the one-time three-share gate before this handler is exposed.
     Outputs: (register_col, setup_col, reg_message, welcome_box)
     """
+
+    try:
+        share_count = int(share_count or 0)
+    except Exception:
+        share_count = 0
+
+    if share_count < REQUIRED_WHATSAPP_SHARES:
+        return (
+            upd(),
+            upd(),
+            (
+                "<div class='ce-msg'>"
+                "🔒 Pehle 3 WhatsApp shares complete karein."
+                "</div>"
+            ),
+            upd()
+        )
 
     clean_name, clean_mobile, error = validate_student(
         name,
@@ -3743,53 +3761,34 @@ def build_app():
                 interactive=True
             )
 
+            # BrowserState persists the share count on the same browser/device.
+            # The actual WhatsApp launch is done client-side from a real Gradio button
+            # so mobile browsers can open WhatsApp reliably.
+            whatsapp_share_count = gr.BrowserState(
+                0,
+                storage_key="chetexam_whatsapp_share_count_v1"
+            )
+
             share_gate = gr.HTML(
                 value=f"""
-                <div id="ce-share-gate" style="margin-top:14px;padding:16px;border:1px solid #d9d9e3;border-radius:14px;background:#fafafa;">
+                <div style="margin-top:14px;padding:16px;border:1px solid #d9d9e3;border-radius:14px;background:#fafafa;">
                   <div style="font-size:18px;font-weight:700;margin-bottom:6px;">📲 Pehle 3 WhatsApp Shares</div>
-                  <div style="font-size:14px;line-height:1.5;margin-bottom:12px;">
+                  <div style="font-size:14px;line-height:1.5;">
                     Test access unlock karne ke liye is ChetExam link ko WhatsApp par <b>3 baar share</b> karein.
-                    Share complete kiye bina Continue button unlock nahi hoga.
                   </div>
-                  <button type="button" id="ce-wa-share" style="width:100%;padding:13px 16px;border:0;border-radius:10px;cursor:pointer;font-weight:700;font-size:16px;">
-                    🟢 Share on WhatsApp
-                  </button>
-                  <div id="ce-share-count" style="margin-top:10px;font-weight:700;text-align:center;">Shares completed: 0 / {REQUIRED_WHATSAPP_SHARES}</div>
-                  <div style="font-size:12px;color:#666;text-align:center;margin-top:6px;">WhatsApp ko message send karne ke liye share screen par Send dabana hoga.</div>
                 </div>
-                <script>
-                (() => {{
-                  const KEY = 'chetexam_whatsapp_share_count_v1';
-                  const REQUIRED = {REQUIRED_WHATSAPP_SHARES};
-                  const getCount = () => Math.min(REQUIRED, parseInt(localStorage.getItem(KEY) || '0', 10) || 0);
-                  const setCount = (n) => localStorage.setItem(KEY, String(Math.min(REQUIRED, n)));
-                  const render = () => {{
-                    const c = getCount();
-                    const el = document.getElementById('ce-share-count');
-                    const btn = document.getElementById('ce-wa-share');
-                    if (el) el.textContent = `Shares completed: ${{c}} / ${{REQUIRED}}`;
-                    if (btn) btn.textContent = c >= REQUIRED ? '✅ 3 Shares Complete' : `🟢 Share on WhatsApp (${{c}}/${{REQUIRED}})`;
-                    const cont = document.querySelector('#ce-register-button button');
-                    if (cont) cont.disabled = c < REQUIRED;
-                  }};
-                  const share = () => {{
-                    const c = getCount();
-                    if (c >= REQUIRED) {{ render(); return; }}
-                    const url = window.location.href.split('#')[0];
-                    const text = 'ChetExam AI par free exam test dein 👇\n' + url;
-                    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
-                    // WhatsApp does not expose delivery/send confirmation to websites.
-                    // Count the share action after opening the WhatsApp share screen.
-                    setCount(c + 1);
-                    render();
-                  }};
-                  document.addEventListener('click', (e) => {{
-                    if (e.target && e.target.closest('#ce-wa-share')) share();
-                  }});
-                  render();
-                }})();
-                </script>
                 """
+            )
+
+            share_button = gr.Button(
+                "🟢 Share on WhatsApp (0/3)",
+                variant="secondary",
+                size="lg",
+                elem_id="ce-wa-share"
+            )
+
+            share_count_box = gr.Markdown(
+                "**Shares completed: 0 / 3**\n\nWhatsApp share screen par **Send** dabane ke baad next share karein."
             )
 
             reg_button = gr.Button(
@@ -4100,7 +4099,8 @@ def build_app():
                 const done = localStorage.getItem('chetexam_registered_v1');
                 const name = localStorage.getItem('chetexam_name_v1') || '';
                 const mobile = localStorage.getItem('chetexam_mobile_v1') || '';
-                if (done === '1' && name && mobile) {
+                const shares = parseInt(localStorage.getItem('chetexam_whatsapp_share_count_v1') || '0', 10) || 0;
+                if (done === '1' && name && mobile && shares >= 3) {
                   const setVal = (id, value) => {
                     const root = document.getElementById(id);
                     const input = root && root.querySelector('input, textarea');
@@ -4124,6 +4124,67 @@ def build_app():
         )
 
         # --------------------------------------------------------
+        # WHATSAPP SHARE GATE
+        # --------------------------------------------------------
+
+        def count_whatsapp_share(current_count):
+            try:
+                current = int(current_count or 0)
+            except Exception:
+                current = 0
+
+            new_count = min(
+                REQUIRED_WHATSAPP_SHARES,
+                current + 1
+            )
+
+            return (
+                new_count,
+                f"**Shares completed: {new_count} / {REQUIRED_WHATSAPP_SHARES}**\n\n"
+                + (
+                    "✅ Ab **Continue to Test** dabakar test start karein."
+                    if new_count >= REQUIRED_WHATSAPP_SHARES
+                    else "WhatsApp share screen par **Send** dabane ke baad next share karein."
+                ),
+                upd(
+                    interactive=(new_count >= REQUIRED_WHATSAPP_SHARES)
+                ),
+                upd(
+                    value=(
+                        "✅ 3 Shares Complete"
+                        if new_count >= REQUIRED_WHATSAPP_SHARES
+                        else f"🟢 Share on WhatsApp ({new_count}/{REQUIRED_WHATSAPP_SHARES})"
+                    )
+                )
+            )
+
+        share_button.click(
+            fn=count_whatsapp_share,
+            inputs=[whatsapp_share_count],
+            outputs=[
+                whatsapp_share_count,
+                share_count_box,
+                reg_button,
+                share_button,
+            ],
+            js="""
+            () => {
+                try {
+                    const key = 'chetexam_whatsapp_share_count_v1';
+                    const oldCount = Math.min(3, parseInt(localStorage.getItem(key) || '0', 10) || 0);
+                    if (oldCount < 3) {
+                        localStorage.setItem(key, String(oldCount + 1));
+                        const url = window.location.href.split('#')[0];
+                        const message = 'ChetExam AI par free exam test dein 👇\n' + url;
+                        window.open('https://wa.me/?text=' + encodeURIComponent(message), '_blank');
+                    }
+                } catch (e) {}
+                return [];
+            }
+            """
+        )
+
+        # --------------------------------------------------------
         # REGISTRATION
         # --------------------------------------------------------
 
@@ -4140,6 +4201,7 @@ def build_app():
                 reg_name,
                 reg_mobile,
                 reg_consent,
+                whatsapp_share_count,
             ],
             outputs=registration_outputs
         )
@@ -4172,6 +4234,7 @@ def build_app():
                 reg_name,
                 reg_mobile,
                 reg_consent,
+                whatsapp_share_count,
             ],
             outputs=registration_outputs
         )
