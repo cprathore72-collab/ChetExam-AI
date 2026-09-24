@@ -4561,11 +4561,19 @@ def main():
     )
     print("=" * 70)
 
-    demo.launch(
-        server_name="0.0.0.0",
-        server_port=port,
-        show_error=True,
-    )
+   port = int(os.environ.get("PORT", "7860"))
+
+try:
+    demo.queue(default_concurrency_limit=4, max_size=10)
+except Exception:
+    pass
+
+demo.launch(
+    server_name="0.0.0.0",
+    server_port=port,
+    show_error=True,
+    share=False,
+)
 
 
 # ================================================================
