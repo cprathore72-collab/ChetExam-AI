@@ -4451,7 +4451,8 @@ def build_app():
 
         try:
             demo.queue(
-                default_concurrency_limit=16
+                default_concurrency_limit=4,
+                max_size=10
             )
         except TypeError:
             demo.queue()
@@ -4561,19 +4562,12 @@ def main():
     )
     print("=" * 70)
 
-   port = int(os.environ.get("PORT", "7860"))
-
-try:
-    demo.queue(default_concurrency_limit=4, max_size=10)
-except Exception:
-    pass
-
-demo.launch(
-    server_name="0.0.0.0",
-    server_port=port,
-    show_error=True,
-    share=False,
-)
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=port,
+        show_error=True,
+        share=False,
+    )
 
 
 # ================================================================
