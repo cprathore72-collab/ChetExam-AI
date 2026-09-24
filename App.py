@@ -3045,7 +3045,6 @@ def nochange_view():
 def on_register(
     name,
     mobile,
-    consent,
     share_count=0
 ):
     """
@@ -3781,14 +3780,6 @@ def build_app():
                 elem_id="ce-reg-mobile"
             )
 
-            reg_consent = gr.Checkbox(
-                label=(
-                    "Future ChetExam / AI Exam Mentor updates "
-                    "ke liye contact kiya ja sakta hai."
-                ),
-                value=False,
-                interactive=True
-            )
 
             whatsapp_share_count = gr.State(0)
 
