@@ -4095,47 +4095,77 @@ def build_app():
             timer,
         ]
 
-        # --------------------------------------------------------
+                # --------------------------------------------------------
         # ONE-TIME BROWSER ACCESS RESTORE
         # --------------------------------------------------------
-        # After a successful first registration, keep the student's name/mobile
-        # locally so the same browser can return directly to Exam Setup.
-        def restore_saved_student():
-            return None
+        def restore_saved_student(dummy_name, dummy_mobile, dummy_shares):
+            try:
+                s = int(dummy_shares or 0)
+            except:
+                s = 0
+            s = min(REQUIRED_WHATSAPP_SHARES, max(0, s))
+            
+            # Agar student pehle se registered hai (3 shares complete)
+            if dummy_name and dummy_mobile and s >= REQUIRED_WHATSAPP_SHARES:
+                welcome = f"<div class='ce-info'>Welcome back <b>{esc(dummy_name)}</b> 👋<br>Ab test start kar sakte ho.</div>"
+                return (
+                    upd(visible=False),  # reg_col hide
+                    upd(visible=True),   # setup_col show
+                    welcome,             # welcome_box
+                    s,                   # whatsapp_share_count
+                    upd(),               # share_button
+                    upd(),               # share_count_box
+                    upd()                # reg_button
+                )
+            
+            # Agar registration bacha hai ya shares incomplete hain
+            btn_text = f"✅ {REQUIRED_WHATSAPP_SHARES} Shares Complete" if s >= REQUIRED_WHATSAPP_SHARES else f"🟢 Share on WhatsApp ({s}/{REQUIRED_WHATSAPP_SHARES})"
+            md_text = f"**Shares completed: {s} / {REQUIRED_WHATSAPP_SHARES}**\n\nWhatsApp share screen par **Send** dabane ke baad wapas website par aayein."
+            
+            if s >= REQUIRED_WHATSAPP_SHARES:
+                md_text = f"**Shares completed: {s} / {REQUIRED_WHATSAPP_SHARES}**\n\n✅ Ab **CONTINUE TO TEST** dabakar test start karein."
+                
+            return (
+                upd(visible=True), 
+                upd(visible=False), 
+                "", 
+                s,
+                upd(value=btn_text),
+                upd(value=md_text),
+                upd(interactive=(s >= REQUIRED_WHATSAPP_SHARES))
+            )
 
         demo.load(
             fn=restore_saved_student,
-            inputs=[],
-            outputs=[],
+            inputs=[reg_name, reg_mobile, whatsapp_share_count],
+            outputs=[
+                reg_col, 
+                setup_col, 
+                welcome_box, 
+                whatsapp_share_count,
+                share_button,
+                share_count_box,
+                reg_button
+            ],
             js="""
-            () => {
+            (n, m, s) => {
               try {
                 const done = localStorage.getItem('chetexam_registered_v1');
                 const name = localStorage.getItem('chetexam_name_v1') || '';
                 const mobile = localStorage.getItem('chetexam_mobile_v1') || '';
-                const shares = parseInt(localStorage.getItem('chetexam_whatsapp_share_count_v2') || '0', 10) || 0;
-                if (done === '1' && name && mobile && shares >= 3) {
-                  const setVal = (id, value) => {
-                    const root = document.getElementById(id);
-                    const input = root && root.querySelector('input, textarea');
-                    if (!input) return;
-                    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-                    if (setter) setter.call(input, value); else input.value = value;
-                    input.dispatchEvent(new Event('input', {bubbles:true}));
-                    input.dispatchEvent(new Event('change', {bubbles:true}));
-                  };
-                  setTimeout(() => {
-                    setVal('ce-reg-name', name);
-                    setVal('ce-reg-mobile', mobile);
-                    const b = document.querySelector('#ce-register-button button');
-                    if (b) { b.disabled = false; b.click(); }
-                  }, 700);
+                const shares = localStorage.getItem('chetexam_whatsapp_share_count_v2') || '0';
+                
+                if (done === '1' && name && mobile && parseInt(shares, 10) >= 3) {
+                  return [name, mobile, shares];
                 }
-              } catch (e) {}
-              return [];
+                return ["", "", shares];
+              } catch (e) {
+                return ["", "", "0"];
+              }
             }
             """
         )
+
 
         # --------------------------------------------------------
         # WHATSAPP SHARE GATE - RELIABLE IMPLEMENTATION
