@@ -9,8 +9,6 @@ import html
 import time
 import random
 import unicodedata
-import json
-from urllib.request import Request, urlopen
 from collections import Counter
 
 import numpy as np
@@ -22,7 +20,7 @@ import gradio as gr
 # 1. CONFIG
 # ================================================================
 
-SHEET_ID ="1Hw2cRzZs9ZvCPDrpC2ehi83PHgmeTAgKlNGMs8hHZVw"
+SHEET_ID ="1Hw2cRzZs9ZvCPdrpC2ehi83PHgmeTAgKlNGMs8hHZVw"
 SHEET_TAB = "MCQ_DATABASE"
 
 MAX_Q = 100
@@ -70,16 +68,37 @@ EXCLUDE_CHECK_KEYWORDS = []
 
 SHOW_TOPICS_IN_DIAGNOSTICS = True
 
-# Student registration API
-# The endpoint is public, but the API secret is kept here so no
-# separate Raven environment-variable setup is required.
-STUDENT_API_URL = (
+
+# ================================================================
+# 1B. STUDENT REGISTRATION CONFIG
+# ================================================================
+#
+# 👉 ONE-TIME SETUP NEEDED (see chat reply for full explanation):
+# The existing Apps Script Web App below currently requires a secret
+# that we don't have. Redeploy it with the no-secret version of the
+# script given in the chat reply, then paste the resulting /exec URL
+# here. If you reuse the SAME URL after removing the secret check
+# inside the script, you don't even need to change this constant.
+
+STUDENT_SHEET_ID = "1jG3fhzP8_TPki3SqeV3rtC5sY28bXkmXVmQLyXv7dyA"
+STUDENT_SHEET_TAB = "STUDENTS"
+
+STUDENT_WEBAPP_URL = (
     "https://script.google.com/macros/s/"
-    "AKfycbxBWWufizRwwFlcTxkbPabv7c4hvq2ocLNlfMePhAeZH7FxvgKzAD-VlwNfwlHzRnK/"
-    "exec"
+    "AKfycbxBWWufizRwwFlcTxkbPabv7c4hvq2ocLNlfMePhAeZH7FxvgKzAD-VlwNfwlHzRnK/exec"
 )
 
-STUDENT_API_SECRET = "ChetExam_Student_2026_X9p7K2"
+REGISTRATION_SOURCE = "ChetExam AI"
+
+# Optional: if the Apps Script Web App uses a secret,
+# set STUDENT_API_SECRET in the hosting environment.
+# If the Web App does not use a secret, leave it unset.
+STUDENT_API_SECRET = os.environ.get(
+    "STUDENT_API_SECRET",
+    ""
+).strip()
+
+MOBILE_RE = re.compile(r"^[6-9]\d{9}$")
 
 
 # ================================================================
@@ -295,6 +314,132 @@ def load_google_sheet():
     )
 
     return df.values.tolist()
+
+
+# ================================================================
+# 4B. STUDENT REGISTRATION HELPERS
+# ================================================================
+
+def normalize_mobile(raw):
+    """
+    Strips spaces, +91, hyphens, leading 0 etc.
+    Returns digits-only string (not validated yet).
+    """
+
+    s = re.sub(
+        r"\D",
+        "",
+        str(raw or "")
+    )
+
+    # Indian mobiles never start with 0, so stripping leading
+    # zeros first safely handles "0091...", "091...", "0...".
+    s = s.lstrip("0")
+
+    if (
+        s.startswith("91")
+        and len(s) == 12
+    ):
+        s = s[2:]
+
+    return s
+
+
+def validate_student(name, mobile):
+    """
+    Returns (clean_name, clean_mobile, error_message).
+    error_message is "" when valid.
+    """
+
+    clean_name = clean(name)
+
+    clean_mobile = normalize_mobile(
+        mobile
+    )
+
+    if len(clean_name) < 2:
+        return (
+            None,
+            None,
+            "⚠️ Naam kam se kam 2 characters ka hona chahiye."
+        )
+
+    if not MOBILE_RE.match(clean_mobile):
+        return (
+            None,
+            None,
+            "⚠️ Mobile number 10 digit ka hona chahiye "
+            "aur 6, 7, 8 ya 9 se start hona chahiye."
+        )
+
+    return (
+        clean_name,
+        clean_mobile,
+        ""
+    )
+
+
+def register_student(name, mobile, consent):
+    """
+    Best-effort write to the STUDENTS Google Sheet via the Apps
+    Script Web App, using ONLY the Python standard library (no
+    'requests' dependency, no secret, no environment variable).
+
+    This never raises — a network/script failure is only printed
+    to the console so the student's test is never blocked by it.
+    """
+
+    if not STUDENT_WEBAPP_URL:
+        print(
+            "⚠️ STUDENT_WEBAPP_URL not set — "
+            "skipping student sheet write."
+        )
+        return
+
+    import json
+    import urllib.request
+    import urllib.error
+
+    payload_data = {
+        "name": name,
+        "mobile": mobile,
+        "consent": bool(consent),
+        "source": REGISTRATION_SOURCE,
+    }
+
+    if STUDENT_API_SECRET:
+        payload_data["secret"] = STUDENT_API_SECRET
+
+    payload = json.dumps(
+        payload_data
+    ).encode("utf-8")
+
+    request = urllib.request.Request(
+        STUDENT_WEBAPP_URL,
+        data=payload,
+        headers={
+            "Content-Type": "application/json"
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=8
+        ) as response:
+            response.read()
+
+        print(
+            f"✅ Student registered in sheet: {name} ({mobile})"
+        )
+
+    except Exception as e:
+        print(
+            "⚠️ Student sheet write failed "
+            "(test will still continue): "
+            f"{type(e).__name__}: {e}"
+        )
 
 
 # ================================================================
@@ -2334,6 +2479,14 @@ HEADER_HTML = (
 )
 
 
+REGISTRATION_HEADER_HTML = (
+    "<div class='ce-info'>"
+    "👋 <b>Welcome to ChetExam AI</b><br>"
+    "Test start karne se pehle basic details enter karein."
+    "</div>"
+)
+
+
 CSS = """
 :root,
 body,
@@ -2755,16 +2908,24 @@ def upd(**kwargs):
 
 
 def screen(mode):
+    """
+    Returns visibility updates for
+    (register_col, setup_col, test_col, result_col, confirm_col)
+    in that order.
+    """
 
     values = {
+        "register":
+            (True, False, False, False, False),
+
         "setup":
-            (True, False, False, False),
+            (False, True, False, False, False),
 
         "test":
-            (False, True, False, False),
+            (False, False, True, False, False),
 
         "result":
-            (False, False, True, False),
+            (False, False, False, True, False),
     }
 
     return tuple(
@@ -2846,6 +3007,56 @@ def nochange_view():
 # 17. EVENT HANDLERS
 # ================================================================
 
+def on_register(
+    name,
+    mobile,
+    consent
+):
+    """
+    Validates Name + Mobile, best-effort writes to the STUDENTS
+    sheet, then reveals the existing Exam Setup screen.
+    Outputs: (register_col, setup_col, reg_message, welcome_box)
+    """
+
+    clean_name, clean_mobile, error = validate_student(
+        name,
+        mobile
+    )
+
+    if error:
+
+        return (
+            upd(),
+            upd(),
+            (
+                "<div class='ce-msg'>"
+                f"{error}"
+                "</div>"
+            ),
+            upd()
+        )
+
+    register_student(
+        clean_name,
+        clean_mobile,
+        consent
+    )
+
+    welcome = (
+        "<div class='ce-info'>"
+        f"Welcome {esc(clean_name)} 👋<br>"
+        "Ab test start kar sakte ho."
+        "</div>"
+    )
+
+    return (
+        upd(visible=False),
+        upd(visible=True),
+        "",
+        welcome
+    )
+
+
 def on_selector_change(
     exam,
     subject,
@@ -2904,6 +3115,7 @@ def start_test(
             upd(),
             upd(),
             upd(),
+            upd(),
             (
                 "<div class='ce-msg'>"
                 f"{message}"
@@ -2929,6 +3141,7 @@ def start_test(
         screens[1],
         screens[2],
         screens[3],
+        screens[4],
         "",
         "",
         gr.Timer(
@@ -3248,6 +3461,7 @@ def finish_test(
         screens[1],
         screens[2],
         screens[3],
+        screens[4],
         summary_html(
             state,
             state["result"]
@@ -3279,7 +3493,7 @@ def confirm_submit(
             state,
             *[
                 upd()
-                for _ in range(8)
+                for _ in range(9)
             ]
         )
 
@@ -3320,6 +3534,7 @@ def timer_tick(
             upd(),
             upd(),
             upd(),
+            upd(),
             upd(
                 active=False
             )
@@ -3335,6 +3550,7 @@ def timer_tick(
         return (
             timer_html(state),
             state,
+            upd(),
             upd(),
             upd(),
             upd(),
@@ -3379,6 +3595,7 @@ def new_test():
         screens[1],
         screens[2],
         screens[3],
+        screens[4],
         "",
         "",
         gr.Timer(
@@ -3407,6 +3624,7 @@ def retest(
 
         return (
             old_state,
+            upd(),
             upd(),
             upd(),
             upd(),
@@ -3447,6 +3665,7 @@ def retest(
         screens[1],
         screens[2],
         screens[3],
+        screens[4],
         "",
         "",
         gr.Timer(
@@ -3459,105 +3678,7 @@ def retest(
 
 
 # ================================================================
-# 18. STUDENT REGISTRATION
-# ================================================================
-
-def register_student(
-    name,
-    mobile,
-    consent
-):
-
-    name = clean(name)
-    mobile = re.sub(
-        r"\D",
-        "",
-        clean(mobile)
-    )
-
-    if len(name) < 2:
-        return (
-            None,
-            upd(visible=True),
-            upd(visible=False),
-            "<div class='ce-warn'>Please apna valid naam enter karo.</div>"
-        )
-
-    if not re.fullmatch(
-        r"[6-9]\d{9}",
-        mobile
-    ):
-        return (
-            None,
-            upd(visible=True),
-            upd(visible=False),
-            "<div class='ce-warn'>Please 10-digit valid Indian mobile number enter karo.</div>"
-        )
-
-    payload = {
-        "name": name,
-        "mobile": mobile,
-        "consent": bool(consent),
-        "source": "ChetExam AI",
-        "secret": STUDENT_API_SECRET,
-    }
-
-    try:
-        request = Request(
-            STUDENT_API_URL,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json"
-            },
-            method="POST"
-        )
-
-        with urlopen(
-            request,
-            timeout=15
-        ) as response:
-            raw = response.read().decode(
-                "utf-8"
-            )
-            data = json.loads(raw)
-
-        if not data.get("ok"):
-            return (
-                None,
-                upd(visible=True),
-                upd(visible=False),
-                "<div class='ce-warn'>Registration save nahi ho paaya. Please dobara try karo.</div>"
-            )
-
-    except Exception as e:
-        print(
-            "Student registration error:",
-            type(e).__name__,
-            str(e)
-        )
-        return (
-            None,
-            upd(visible=True),
-            upd(visible=False),
-            "<div class='ce-warn'>Registration save nahi ho paaya. Please thodi der baad try karo.</div>"
-        )
-
-    student = {
-        "name": name,
-        "mobile": mobile,
-        "consent": bool(consent),
-    }
-
-    return (
-        student,
-        upd(visible=False),
-        upd(visible=True),
-        f"<div class='ce-ok-msg'>Welcome <b>{esc(name)}</b> 👋<br>Ab test start kar sakte ho.</div>"
-    )
-
-
-# ================================================================
-# 19. BUILD APP
+# 18. BUILD APP
 # ================================================================
 
 def build_app():
@@ -3580,53 +3701,46 @@ def build_app():
             value=HEADER_HTML
         )
 
-        student_state = gr.State(
-            value=None
-        )
+        # --------------------------------------------------------
+        # STUDENT REGISTRATION (shown first, once per session)
+        # --------------------------------------------------------
 
         with gr.Column(
             visible=True
-        ) as login_col:
+        ) as reg_col:
 
-            gr.Markdown(
-                """
-                ## 👋 Welcome to ChetExam AI
-
-                **Test start karne se pehle basic details enter karein.**
-                """
+            gr.HTML(
+                value=REGISTRATION_HEADER_HTML
             )
 
-            student_name = gr.Textbox(
+            reg_name = gr.Textbox(
                 label="👤 Name",
-                placeholder="Apna naam enter karein",
-                max_lines=1,
+                placeholder="Apna naam likhein",
                 interactive=True
             )
 
-            student_mobile = gr.Textbox(
+            reg_mobile = gr.Textbox(
                 label="📱 Mobile Number",
-                placeholder="10-digit mobile number",
-                max_lines=1,
-                type="tel",
+                placeholder="10 digit mobile number",
                 interactive=True
             )
 
-            student_consent = gr.Checkbox(
+            reg_consent = gr.Checkbox(
                 label=(
-                    "Future ChetExam / AI Exam Mentor "
-                    "updates ke liye contact kiya ja sakta hai."
+                    "Future ChetExam / AI Exam Mentor updates "
+                    "ke liye contact kiya ja sakta hai."
                 ),
                 value=False,
                 interactive=True
             )
 
-            login_button = gr.Button(
+            reg_button = gr.Button(
                 "➡️ CONTINUE TO TEST",
                 variant="primary",
                 size="lg"
             )
 
-            login_message = gr.HTML(
+            reg_message = gr.HTML(
                 value=""
             )
 
@@ -3637,6 +3751,10 @@ def build_app():
         with gr.Column(
             visible=False
         ) as setup_col:
+
+            welcome_box = gr.HTML(
+                value=""
+            )
 
             exam_dd = gr.Dropdown(
                 choices=selectors[
@@ -3872,6 +3990,7 @@ def build_app():
 
         screen_outputs = [
             state,
+            reg_col,
             setup_col,
             test_col,
             result_col,
@@ -3892,6 +4011,7 @@ def build_app():
 
         finish_outputs = [
             state,
+            reg_col,
             setup_col,
             test_col,
             result_col,
@@ -3903,22 +4023,34 @@ def build_app():
         ]
 
         # --------------------------------------------------------
-        # STUDENT LOGIN / REGISTRATION
+        # REGISTRATION
         # --------------------------------------------------------
 
-        login_button.click(
-            fn=register_student,
+        registration_outputs = [
+            reg_col,
+            setup_col,
+            reg_message,
+            welcome_box,
+        ]
+
+        reg_button.click(
+            fn=on_register,
             inputs=[
-                student_name,
-                student_mobile,
-                student_consent,
+                reg_name,
+                reg_mobile,
+                reg_consent,
             ],
-            outputs=[
-                student_state,
-                login_col,
-                setup_col,
-                login_message,
-            ]
+            outputs=registration_outputs
+        )
+
+        reg_mobile.submit(
+            fn=on_register,
+            inputs=[
+                reg_name,
+                reg_mobile,
+                reg_consent,
+            ],
+            outputs=registration_outputs
         )
 
         # --------------------------------------------------------
@@ -4091,6 +4223,7 @@ def build_app():
             outputs=[
                 timer_box,
                 state,
+                reg_col,
                 setup_col,
                 test_col,
                 result_col,
