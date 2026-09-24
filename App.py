@@ -4170,7 +4170,7 @@ def build_app():
                 sessionStorage.setItem('ce_wa_pending', '1');
                 
                 const url = window.location.href.split('#')[0];
-                const text = encodeURIComponent('ChetExam AI par free exam test dein 👇\n' + url);
+                const text = encodeURIComponent('ChetExam AI par free exam test dein 👇\\n' + url);
                 window.open('https://wa.me/?text=' + text, '_blank');
                 return [];
             }
