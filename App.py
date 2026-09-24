@@ -13,6 +13,35 @@ from collections import Counter
 
 import numpy as np
 import pandas as pd
+
+# ----------------------------------------------------------------
+# huggingface_hub compatibility patch
+# gradio 4.44.1 uses HfFolder which was removed in
+# huggingface_hub >= 0.24.0. This stub prevents the ImportError
+# on newer server environments (like Raven).
+# ----------------------------------------------------------------
+try:
+    from huggingface_hub import HfFolder as _HfFolderTest  # noqa
+except ImportError:
+    import huggingface_hub as _hfh
+
+    class _HfFolderStub:
+        @staticmethod
+        def get_token():
+            return None
+
+        @staticmethod
+        def save_token(token):
+            pass
+
+        @staticmethod
+        def delete_token():
+            pass
+
+    _hfh.HfFolder = _HfFolderStub
+    del _hfh
+# ----------------------------------------------------------------
+
 import gradio as gr
 
 
