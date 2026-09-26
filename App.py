@@ -3870,6 +3870,12 @@ def build_app():
                 value=""
             )
 
+                    restore_button = gr.Button(
+                "restore",
+                visible=False,
+                elem_id="ce-restore-student"
+            )
+
         # --------------------------------------------------------
         # SETUP
         # --------------------------------------------------------
