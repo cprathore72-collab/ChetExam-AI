@@ -112,9 +112,7 @@ SHOW_TOPICS_IN_DIAGNOSTICS = True
 STUDENT_SHEET_ID = "1jG3fhzP8_TPki3SqeV3rtC5sY28bXkmXVmQLyXv7dyA"
 STUDENT_SHEET_TAB = "STUDENTS"
 
-STUDENT_WEBAPP_URL = (
-    "https://script.google.com/macros/s/"
-    "AKfycbxBWWufizRwwFlcTxkbPabv7c4hvq2ocLNlfMePhAeZH7FxvgKzAD-VlwNfwlHzRnK/exec"
+STUDENT_WEBAPP_URL = ("https://script.google.com/macros/s/AKfycbxZI6N-_QET_WhRydyWHw4Ka3NiiktvddUywhR7nM-Mt64IplGnUErCSDy79qN03Nut/exec"
 )
 
 REGISTRATION_SOURCE = "ChetExam AI"
