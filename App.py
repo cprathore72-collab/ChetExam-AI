@@ -413,37 +413,28 @@ def validate_student(name, mobile):
         ""
     )
 
-
-def register_student(name, mobile, consent):
+def register_student(name, mobile, consent=False):
     """
-    Best-effort write to the STUDENTS Google Sheet via the Apps
-    Script Web App, using ONLY the Python standard library (no
-    'requests' dependency, no secret, no environment variable).
+    ChetExam AI → Google Apps Script → STUDENTS Sheet
 
-    This never raises — a network/script failure is only printed
-    to the console so the student's test is never blocked by it.
+    Apps Script ka actual JSON response read karta hai,
+    taaki pata chale ki student really save hua ya nahi.
     """
 
     if not STUDENT_WEBAPP_URL:
-        print(
-            "⚠️ STUDENT_WEBAPP_URL not set — "
-            "skipping student sheet write."
-        )
-        return
+        print("❌ STUDENT_WEBAPP_URL not set.")
+        return False
 
     import json
     import urllib.request
     import urllib.error
 
     payload_data = {
-        "name": name,
-        "mobile": mobile,
+        "name": str(name).strip(),
+        "mobile": str(mobile).strip(),
         "consent": bool(consent),
         "source": REGISTRATION_SOURCE,
     }
-
-    if STUDENT_API_SECRET:
-        payload_data["secret"] = STUDENT_API_SECRET
 
     payload = json.dumps(
         payload_data
@@ -453,30 +444,94 @@ def register_student(name, mobile, consent):
         STUDENT_WEBAPP_URL,
         data=payload,
         headers={
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "ChetExam-AI/1.0",
         },
         method="POST",
     )
 
     try:
+
         with urllib.request.urlopen(
             request,
-            timeout=8
+            timeout=15
         ) as response:
-            response.read()
+
+            status_code = response.getcode()
+
+            raw_response = response.read().decode(
+                "utf-8",
+                errors="replace"
+            )
+
+        print("=" * 60)
+        print("📤 STUDENT REGISTRATION RESPONSE")
+        print("HTTP STATUS:", status_code)
+        print("RAW RESPONSE:", raw_response)
+        print("=" * 60)
+
+        try:
+            result = json.loads(raw_response)
+        except Exception:
+            result = {}
+
+        if result.get("success") is True:
+
+            if result.get("duplicate") is True:
+                print(
+                    f"ℹ️ Student already exists: "
+                    f"{name} ({mobile})"
+                )
+            else:
+                print(
+                    f"✅ STUDENT SAVED SUCCESSFULLY: "
+                    f"{name} ({mobile})"
+                )
+
+            return True
 
         print(
-            f"✅ Student registered in sheet: {name} ({mobile})"
+            "❌ APPS SCRIPT REPORTED FAILURE:",
+            result.get(
+                "error",
+                result.get(
+                    "message",
+                    raw_response
+                )
+            )
         )
+
+        return False
+
+    except urllib.error.HTTPError as e:
+
+        try:
+            error_body = e.read().decode(
+                "utf-8",
+                errors="replace"
+            )
+        except Exception:
+            error_body = ""
+
+        print("=" * 60)
+        print("❌ STUDENT REGISTRATION HTTP ERROR")
+        print("STATUS:", e.code)
+        print("RESPONSE:", error_body)
+        print("=" * 60)
+
+        return False
 
     except Exception as e:
+
+        print("=" * 60)
+        print("❌ STUDENT REGISTRATION CONNECTION ERROR")
         print(
-            "⚠️ Student sheet write failed "
-            "(test will still continue): "
             f"{type(e).__name__}: {e}"
         )
+        print("=" * 60)
 
-
+        return False
 # ================================================================
 # 5. RAW ROWS → DATAFRAME
 # ================================================================
