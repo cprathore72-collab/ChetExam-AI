@@ -58,7 +58,10 @@ SHEET_TAB = "MCQ_DATABASE"
 # new question bank tab, e.g. ["ras_polity", "ras_history"].
 # Tab names must match the Google Sheet tab names exactly.
 NEW_MCQ_TABS = [
-    "ras_polity",
+    "ras_polity"
+    "MODERN_INDIA"
+    "ANCIENT_INDIA"
+    "MEDIEVAL_INDIA",
 ]
 
 MAX_Q = 100
