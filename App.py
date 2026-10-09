@@ -62,6 +62,10 @@ NEW_MCQ_TABS = [
     "MODERN_INDIA",
     "ANCIENT_INDIA",
     "MEDIEVAL_INDIA",
+    "PHYSICS",
+    "BIOLOGY ",
+    "ECONOMY",
+    "INDIAN_GEOGRAPHY",
 ]
 
 MAX_Q = 100
